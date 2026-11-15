@@ -1,0 +1,5 @@
+void NotifySensor(void)
+{
+/* Notification function for ADC sensor */
+
+}
