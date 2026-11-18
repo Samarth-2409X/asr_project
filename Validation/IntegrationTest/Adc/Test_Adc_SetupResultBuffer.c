@@ -75,10 +75,7 @@ Std_ReturnType Det_ReportRuntimeError(
 
 /* ============================================================================
  * 2. DRIVER UNDER TEST (White-Box Inclusion for Static State Access)
- * ============================================================================
- * Note: Adjust the subfolder inside Developement if Adc_SetupResultBuffer.c
- *       is placed inside a nested folder (e.g. "../../../Developement/Adc/Adc_SetupResultBuffer.c").
- */
+ * ============================================================================ */
 #include "../../../Developement/Adc_SetupResultBuffer.c"
 
 /* Local helper to initialize driver state for standalone unit testing */
