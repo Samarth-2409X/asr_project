@@ -6,15 +6,6 @@
  * Standard : ISO 26262-6 Clause 8 (Software Integration & Verification)
  * Author   : Samarth Shirahatti (Validation Team)
  *
- * Description:
- *   Extensible Software Integration Test Suite (5 baseline integration cases)
- *   verifying cross-API interactions between:
- *     - Adc_Init() / Adc_DeInit()
- *     - Adc_SetupResultBuffer()
- *     - Adc_StartGroupConversion() / Adc_StopGroupConversion()
- *     - Adc_GetGroupStatus()
- *     - Det_ReportError() / Det_ReportRuntimeError()
- *
  * Result Convention (Test_Result):
  *     1U -> PASS (TEST_PASS)
  *     0U -> FAIL (TEST_FAIL)
@@ -335,12 +326,8 @@ void Test_Adc_SetupResultBuffer_It_005(void)
 
 /* ============================================================================
  * 4. EXTENSIBLE INTEGRATION TEST REGISTRY & RUNNER
- * ============================================================================
- * To extend this suite in the future:
- *   1. Write a new function: void Test_Adc_SetupResultBuffer_It_006(void)
- *   2. Add one entry to Test_CaseTable[] below.
- *   TOTAL_TEST_CASES updates automatically at compile time.
  * ============================================================================ */
+ 
 typedef struct
 {
     const char* TestName;
