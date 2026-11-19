@@ -1,185 +1,247 @@
-/*******************************************************************************
- * File     : Test_Adc_StartGroupConversion.c
- * Module   : ADC driver (AUTOSAR CP R22-11, Infineon AURIX TC397)
- * Function : Adc_StartGroupConversion()
- * Author   : Validation team
- *
- * Result convention:
- *     1    -> PASS
- *     0    -> FAIL
- *     0xFF -> NOT IMPLEMENTED
- ******************************************************************************/
-
-#include "Std_Types.h"
+#include <stdio.h>
 #include "Adc.h"
-#include "Adc_Cfg.h"
-#include "Det_Stub.h"
-
-#define TEST_PASS             (1u)
-#define TEST_FAIL             (0u)
-#define TEST_NOT_IMPLEMENTED  (0xFFu)
-
-#define ADC_START_GROUP_API_ID (0x02u)
-
-static uint8 Test_Result;
-
-extern const Adc_ConfigType adcConfig;
+#include "Det.h"
 
 /*
- * This pointer must be exposed by the driver for TC 3.
- * If it is private, add a test-only accessor in Adc.c instead.
+ * Include implementation directly for unit testing.
+ * This gives the test access to static driver variables.
  */
-extern Adc_ValueGroupType *Adc_GroupResultBufferPtr[];
+#include "Adc_StartGroupConversion.c"
 
-/* Test data buffer */
-static Adc_ValueGroupType Test_DataBuffer[3];
+/* DET mock variables */
 
-/*******************************************************************************
- * Getter function
- ******************************************************************************/
-uint8 Test_Adc_StartGroupConversion_GetResult(void)
+uint8 Det_ErrorId = 0xFFU;
+uint8 Det_RuntimeErrorId = 0xFFU;
+
+uint8 Det_ErrorCount = 0U;
+uint8 Det_RuntimeErrorCount = 0U;
+
+uint16 Det_ModuleId;
+uint8 Det_InstanceId;
+uint8 Det_ApiId;
+
+/* DET mock functions */
+
+Std_ReturnType Det_ReportError(
+    uint16 ModuleId,
+    uint8 InstanceId,
+    uint8 ApiId,
+    uint8 ErrorId)
 {
-    return Test_Result;
+    Det_ModuleId = ModuleId;
+    Det_InstanceId = InstanceId;
+    Det_ApiId = ApiId;
+    Det_ErrorId = ErrorId;
+
+    Det_ErrorCount++;
+
+    return E_OK;
 }
 
-/*******************************************************************************
- * Common reset function
- ******************************************************************************/
-static void Test_Reset(void)
+Std_ReturnType Det_ReportRuntimeError(
+    uint16 ModuleId,
+    uint8 InstanceId,
+    uint8 ApiId,
+    uint8 ErrorId)
 {
-    Adc_DeInit();
-    DetStub_Reset();
+    Det_ModuleId = ModuleId;
+    Det_InstanceId = InstanceId;
+    Det_ApiId = ApiId;
+    Det_RuntimeErrorId = ErrorId;
 
-    Adc_Init(&adcConfig);
+    Det_RuntimeErrorCount++;
 
-    DetStub_Reset();
+    return E_OK;
 }
 
-/*******************************************************************************
- * TC 1: Successful conversion
- * Requirement: REQ_ADC_017 / SWS_Adc_00367
- *
- * Description:
- * Checks whether a valid software-triggered group starts conversion.
- ******************************************************************************/
-void Test_Adc_StartGroupConversion_Tc_001(void)
+/* ADC configuration and result buffer */
+
+Adc_ConfigType adcConfig;
+Adc_ValueGroupType ResultBuffer[2];
+
+/* Reset driver state before every test */
+
+void Reset_Test(void)
 {
-    Test_Reset();
+    Adc_GroupType i;
 
-    (void)Adc_SetupResultBuffer(0u, Test_DataBuffer);
-    DetStub_Reset();
+    adcConfig.AdcHwUnit.AdcGroup[0].AdcGroupTriggSrc =
+        ADC_TRIGG_SRC_SW;
 
-    Adc_StartGroupConversion(0u);
+    adcConfig.AdcHwUnit.AdcGroup[1].AdcGroupTriggSrc =
+        ADC_TRIGG_SRC_SW;
 
-    if ((DetStub_CallCount() == 0u) &&
-        (Adc_GetGroupStatus(0u) == ADC_BUSY))
+    Adc_DriverState = ADC_STATE_INIT;
+    Adc_ConfigPtr = &adcConfig;
+
+    for (i = 0U; i < ADC_MAX_GROUPS_PER_HW_UNIT; i++)
     {
-        Test_Result = TEST_PASS;
+        Adc_GroupRuntime[i].GroupStatus = ADC_IDLE;
+
+        Adc_GroupRuntime[i].ResultBufferPtr = NULL_PTR;
+
+        Adc_GroupRuntime[i].NotificationEnabled = FALSE;
+    }
+
+    Det_ErrorId = 0xFFU;
+    Det_RuntimeErrorId = 0xFFU;
+
+    Det_ErrorCount = 0U;
+    Det_RuntimeErrorCount = 0U;
+}
+
+/* -----------------------------------------
+   TEST CASE 1:
+   Valid group and initialized result buffer
+   ----------------------------------------- */
+
+void Test_01_Valid_Group(void)
+{
+    Reset_Test();
+
+    Adc_GroupRuntime[0U].ResultBufferPtr = ResultBuffer;
+
+    Adc_StartGroupConversion(0U);
+
+    if ((Adc_GroupRuntime[0U].GroupStatus == ADC_BUSY) &&
+        (Det_ErrorCount == 0U) &&
+        (Det_RuntimeErrorCount == 0U))
+    {
+        printf("TC01: PASS - Valid ADC conversion started\n");
     }
     else
     {
-        Test_Result = TEST_FAIL;
+        printf("TC01: FAIL - Valid conversion test failed\n");
     }
 }
 
-/*******************************************************************************
- * TC 2: Invalid group ID
- * Requirement: REQ_ADC_017
- *
- * Description:
- * Checks whether an invalid group ID is detected.
- ******************************************************************************/
-void Test_Adc_StartGroupConversion_Tc_002(void)
+/* -----------------------------------------
+   TEST CASE 2:
+   Invalid ADC group number
+   ----------------------------------------- */
+
+void Test_02_Invalid_Group(void)
 {
-    Test_Reset();
+    Reset_Test();
 
-    Adc_StartGroupConversion(5u);
+    Adc_StartGroupConversion(2U);
 
-    if ((DetStub_CallCount() == 1u) &&
-        (DetStub_LastErrorId() == ADC_E_PARAM_GROUP))
+    if ((Det_ErrorId == ADC_E_PARAM_GROUP) &&
+        (Det_ErrorCount == 1U) &&
+        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
     {
-        Test_Result = TEST_PASS;
+        printf("TC02: PASS - Invalid group detected\n");
     }
     else
     {
-        Test_Result = TEST_FAIL;
+        printf("TC02: FAIL - Invalid group not detected\n");
     }
 }
 
-/*******************************************************************************
- * TC 3: Result buffer not initialized
- * Requirement: REQ_ADC_018 / SWS_Adc_00061
- *
- * Description:
- * Checks whether the driver detects an uninitialized result buffer.
- *
- * Assumption:
- * Group 0 has no default buffer configured.
- ******************************************************************************/
-void Test_Adc_StartGroupConversion_Tc_003(void)
+/* -----------------------------------------
+   TEST CASE 3:
+   Uninitialized result buffer
+   ----------------------------------------- */
+
+void Test_03_Buffer_Uninitialized(void)
 {
-    Test_Reset();
+    Reset_Test();
 
-    /* Remove the result buffer for group 0. */
-    Adc_GroupResultBufferPtr[0] = NULL_PTR;
+    Adc_GroupRuntime[0U].ResultBufferPtr = NULL_PTR;
 
-    DetStub_Reset();
+    Adc_StartGroupConversion(0U);
 
-    Adc_StartGroupConversion(0u);
-
-    if ((DetStub_CallCount() == 1u) &&
-        (DetStub_LastErrorId() == ADC_E_BUFFER_UNINIT))
+    if ((Det_ErrorId == ADC_E_BUFFER_UNINIT) &&
+        (Det_ErrorCount == 1U) &&
+        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
     {
-        Test_Result = TEST_PASS;
+        printf("TC03: PASS - Uninitialized buffer detected\n");
     }
     else
     {
-        Test_Result = TEST_FAIL;
+        printf("TC03: FAIL - Buffer error not detected\n");
     }
 }
 
-/*******************************************************************************
- * TC 4: Wrong trigger source
- * Requirement: REQ_ADC_017
- *
- * Description:
- * Checks whether a hardware-triggered group is rejected by the
- * software-trigger API.
- *
- * Requires a separate hardware-triggered ADC configuration.
- ******************************************************************************/
-void Test_Adc_StartGroupConversion_Tc_004(void)
+/* -----------------------------------------
+   TEST CASE 4:
+   Hardware trigger instead of software trigger
+   ----------------------------------------- */
+
+void Test_04_Wrong_Trigger_Source(void)
 {
-    /*
-     * TODO:
-     * 1. Initialize ADC with a hardware-triggered group 0.
-     * 2. Reset DET stub.
-     * 3. Call Adc_StartGroupConversion(0u).
-     * 4. Check ADC_E_WRONG_TRIGG_SRC.
-     */
-    Test_Result = TEST_NOT_IMPLEMENTED;
+    Reset_Test();
+
+    adcConfig.AdcHwUnit.AdcGroup[0U].AdcGroupTriggSrc =
+        ADC_TRIGG_SRC_HW;
+
+    Adc_GroupRuntime[0U].ResultBufferPtr = ResultBuffer;
+
+    Adc_StartGroupConversion(0U);
+
+    if ((Det_ErrorId == ADC_E_WRONG_TRIGG_SRC) &&
+        (Det_ErrorCount == 1U) &&
+        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
+    {
+        printf("TC04: PASS - Wrong trigger source detected\n");
+    }
+    else
+    {
+        printf("TC04: FAIL - Wrong trigger source not detected\n");
+    }
 }
 
-/*******************************************************************************
- * TC 5: Group already busy
- * Requirement: REQ_ADC_019 / SWS_Adc_00424
- *
- * Description:
- * Checks the behavior when a conversion request is made while the group
- * is already busy.
- *
- * Note:
- * The result depends on the configured queue policy. A second request
- * may be queued instead of reporting an error.
- ******************************************************************************/
-void Test_Adc_StartGroupConversion_Tc_005(void)
+/* -----------------------------------------
+   TEST CASE 5:
+   ADC group is already busy
+   ----------------------------------------- */
+
+void Test_05_Group_Already_Busy(void)
 {
-    /*
-     * TODO:
-     * 1. Initialize ADC and configure a valid result buffer.
-     * 2. Start conversion for group 0.
-     * 3. Call Adc_StartGroupConversion(0u) again.
-     * 4. Verify the behavior against the configured queue policy.
-     */
-    Test_Result = TEST_NOT_IMPLEMENTED;
+    Reset_Test();
+
+    Adc_GroupRuntime[0U].ResultBufferPtr = ResultBuffer;
+
+    Adc_GroupRuntime[0U].GroupStatus = ADC_BUSY;
+
+    Adc_StartGroupConversion(0U);
+
+    if ((Det_RuntimeErrorId == ADC_E_BUSY) &&
+        (Det_RuntimeErrorCount == 1U) &&
+        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
+    {
+        printf("TC05: PASS - Busy ADC group detected\n");
+    }
+    else
+    {
+        printf("TC05: FAIL - Busy ADC group not detected\n");
+    }
+}
+
+/* -----------------------------------------
+   MAIN FUNCTION
+   ----------------------------------------- */
+
+int main(void)
+{
+    printf("\n");
+    printf("========================================\n");
+    printf(" ADC START GROUP CONVERSION TESTING\n");
+    printf("========================================\n");
+
+    Test_01_Valid_Group();
+
+    Test_02_Invalid_Group();
+
+    Test_03_Buffer_Uninitialized();
+
+    Test_04_Wrong_Trigger_Source();
+
+    Test_05_Group_Already_Busy();
+
+    printf("========================================\n");
+    printf(" ADC TESTING COMPLETED\n");
+    printf("========================================\n");
+
+    return 0;
 }
