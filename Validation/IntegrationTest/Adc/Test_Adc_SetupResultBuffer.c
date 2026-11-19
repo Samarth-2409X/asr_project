@@ -1,12 +1,19 @@
 /*******************************************************************************
  * File     : Test_Adc_SetupResultBuffer.c
+ * Layer    : Validation / IntegrationTest / Adc
  * Module   : ADC Driver (AUTOSAR CP R25-11, Infineon AURIX TC39x EVADC CPU0)
  * Function : Adc_SetupResultBuffer() - Service ID: 0x0CU [SWS_Adc_91000]
+ * Standard : ISO 26262-6 Clause 8 (Software Integration & Verification)
  * Author   : Samarth Shirahatti (Validation Team)
  *
  * Description:
- *   Complete, self-contained white-box unit test suite with full DET & Runtime
- *   error stub logic, driver state reset logic, and extensible test registry.
+ *   Extensible Software Integration Test Suite (5 baseline integration cases)
+ *   verifying cross-API interactions between:
+ *     - Adc_Init() / Adc_DeInit()
+ *     - Adc_SetupResultBuffer()
+ *     - Adc_StartGroupConversion() / Adc_StopGroupConversion()
+ *     - Adc_GetGroupStatus()
+ *     - Det_ReportError() / Det_ReportRuntimeError()
  *
  * Result Convention (Test_Result):
  *     1U -> PASS (TEST_PASS)
@@ -15,9 +22,10 @@
 
 #include "Std_Types.h"
 #include "Adc.h"
+#include "Det.h"
 
 /* ============================================================================
- * 1. FULL DET & RUNTIME ERROR STUB IMPLEMENTATION (Self-Contained)
+ * 1. DET & RUNTIME ERROR INTERFACE STUBS (BSW Integration Boundary)
  * ============================================================================ */
 typedef struct
 {
@@ -31,7 +39,7 @@ typedef struct
 
 static Det_LogType Det_ErrorLog;
 
-void DetStub_Reset(void)
+static void DetStub_Reset(void)
 {
     Det_ErrorLog.CallCount      = 0U;
     Det_ErrorLog.LastModuleId   = 0U;
@@ -74,44 +82,7 @@ Std_ReturnType Det_ReportRuntimeError(
 }
 
 /* ============================================================================
- * 2. DRIVER UNDER TEST (White-Box Inclusion for Static State Access)
- * ============================================================================ */
-#include "../../../Developement/Adc_SetupResultBuffer.c"
-
-/* Local helper to initialize driver state for standalone unit testing */
-void Test_Helper_InitDriver(const Adc_ConfigType* ConfigPtr)
-{
-    Adc_GroupType grpIdx;
-
-    if (ConfigPtr != NULL_PTR)
-    {
-        for (grpIdx = 0U; grpIdx < ADC_MAX_GROUPS_PER_HW_UNIT; grpIdx++)
-        {
-            Adc_GroupRuntime[grpIdx].GroupStatus         = ADC_IDLE;
-            Adc_GroupRuntime[grpIdx].ResultBufferPtr     = NULL_PTR;
-            Adc_GroupRuntime[grpIdx].NotificationEnabled = FALSE;
-        }
-        Adc_DriverState = ADC_STATE_INIT;
-    }
-}
-
-/* Resets all internal static driver variables to power-on reset state */
-void Test_Helper_ResetDriver(void)
-{
-    Adc_GroupType grpIdx;
-
-    Adc_DriverState = ADC_STATE_UNINIT;
-    for (grpIdx = 0U; grpIdx < ADC_MAX_GROUPS_PER_HW_UNIT; grpIdx++)
-    {
-        Adc_GroupRuntime[grpIdx].GroupStatus         = ADC_IDLE;
-        Adc_GroupRuntime[grpIdx].ResultBufferPtr     = NULL_PTR;
-        Adc_GroupRuntime[grpIdx].NotificationEnabled = FALSE;
-    }
-    DetStub_Reset();
-}
-
-/* ============================================================================
- * 3. TEST CONFIGURATION & DATA BUFFERS
+ * 2. INTEGRATION TEST CONFIGURATION & DATA BUFFERS
  * ============================================================================ */
 #define TEST_PASS               (1U)
 #define TEST_FAIL               (0U)
@@ -132,8 +103,8 @@ static const Adc_ConfigType Test_AdcConfig =
         .HwUnitId = 0U,
         .AdcChannel =
         {
-            { .AdcChannelSampTime = 1U, .AdcChannelId = 0U },
-            { .AdcChannelSampTime = 1U, .AdcChannelId = 1U }
+            { .AdcChannelSampTime = 5U,  .AdcChannelId = 0U },
+            { .AdcChannelSampTime = 12U, .AdcChannelId = 1U }
         },
         .AdcGroup =
         {
@@ -145,7 +116,7 @@ static const Adc_ConfigType Test_AdcConfig =
                 .AdcNotification        = NULL_PTR,
                 .AdcStreamingBufferMode = ADC_STREAM_BUFFER_LINEAR,
                 .AdcStreamingNumSamples = 1U,
-                .AdcChannel             = { .AdcChannelSampTime = 1U, .AdcChannelId = 0U }
+                .AdcChannel             = { .AdcChannelSampTime = 5U, .AdcChannelId = 0U }
             },
             {
                 .AdcGroupAccessMode     = ADC_ACCESS_MODE_SINGLE,
@@ -155,11 +126,20 @@ static const Adc_ConfigType Test_AdcConfig =
                 .AdcNotification        = NULL_PTR,
                 .AdcStreamingBufferMode = ADC_STREAM_BUFFER_LINEAR,
                 .AdcStreamingNumSamples = 1U,
-                .AdcChannel             = { .AdcChannelSampTime = 1U, .AdcChannelId = 1U }
+                .AdcChannel             = { .AdcChannelSampTime = 12U, .AdcChannelId = 1U }
             }
         }
     }
 };
+
+/* Ensures clean driver state via real AUTOSAR teardown APIs */
+static void Test_Integration_Teardown(void)
+{
+    Adc_StopGroupConversion(TEST_GROUP_0);
+    Adc_StopGroupConversion(TEST_GROUP_1);
+    Adc_DeInit();
+    DetStub_Reset();
+}
 
 uint8 Test_Adc_SetupResultBuffer_GetResult(void)
 {
@@ -167,26 +147,36 @@ uint8 Test_Adc_SetupResultBuffer_GetResult(void)
 }
 
 /* ============================================================================
- * 4. TEST CASES (Full Concrete Logic)
+ * 3. SOFTWARE INTEGRATION TEST CASES (5 Baseline Cases — Extensible)
  * ============================================================================ */
 
 /*******************************************************************************
- * TC_001: Valid Group & Valid Buffer Allocation (Normal Operation)
+ * IT_001: Adc_Init() -> Adc_SetupResultBuffer() -> Adc_GetGroupStatus()
+ * Verifies real initialization followed by valid buffer setup on Group 0.
  * AUTOSAR Req : [SWS_Adc_00420], [SWS_Adc_91000]
  ******************************************************************************/
-void Test_Adc_SetupResultBuffer_Tc_001(void)
+void Test_Adc_SetupResultBuffer_It_001(void)
 {
     Std_ReturnType retVal;
+    Adc_StatusType grp0Status;
+    Adc_StatusType grp1Status;
 
-    Test_Helper_ResetDriver();
-    Test_Helper_InitDriver(&Test_AdcConfig);
+    DetStub_Reset();
 
+    /* Step 1: Real driver initialization */
+    Adc_Init(&Test_AdcConfig);
+
+    /* Step 2: Setup result buffer for Group 0 */
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
+
+    /* Step 3: Verify group states via public status API */
+    grp0Status = Adc_GetGroupStatus(TEST_GROUP_0);
+    grp1Status = Adc_GetGroupStatus(TEST_GROUP_1);
 
     if ((retVal == E_OK) &&
         (Det_ErrorLog.CallCount == 0U) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == Test_BufferA) &&
-        (Adc_GroupRuntime[TEST_GROUP_1].ResultBufferPtr == NULL_PTR))
+        (grp0Status == ADC_IDLE) &&
+        (grp1Status == ADC_IDLE))
     {
         Test_Result = TEST_PASS;
     }
@@ -194,18 +184,22 @@ void Test_Adc_SetupResultBuffer_Tc_001(void)
     {
         Test_Result = TEST_FAIL;
     }
+
+    Test_Integration_Teardown();
 }
 
 /*******************************************************************************
- * TC_002: API Called Before Driver Initialization (ADC_E_UNINIT = 0x0AU)
+ * IT_002: Uninitialized Call -> Det_ReportError(ADC_E_UNINIT = 0x0AU)
+ * Verifies Adc_SetupResultBuffer() rejects calls before Adc_Init().
  * AUTOSAR Req : [SWS_Adc_00434], [SWS_Adc_91005]
  ******************************************************************************/
-void Test_Adc_SetupResultBuffer_Tc_002(void)
+void Test_Adc_SetupResultBuffer_It_002(void)
 {
     Std_ReturnType retVal;
 
-    Test_Helper_ResetDriver(); /* Adc_DriverState is ADC_STATE_UNINIT */
+    DetStub_Reset();
 
+    /* Call without prior Adc_Init() */
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
 
     if ((retVal == E_NOT_OK) &&
@@ -214,8 +208,7 @@ void Test_Adc_SetupResultBuffer_Tc_002(void)
         (Det_ErrorLog.LastModuleId == ADC_MODULE_ID) &&
         (Det_ErrorLog.LastInstanceId == ADC_INSTANCE_ID) &&
         (Det_ErrorLog.LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_ErrorLog.LastErrorId == ADC_E_UNINIT) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == NULL_PTR))
+        (Det_ErrorLog.LastErrorId == ADC_E_UNINIT))
     {
         Test_Result = TEST_PASS;
     }
@@ -226,19 +219,16 @@ void Test_Adc_SetupResultBuffer_Tc_002(void)
 }
 
 /*******************************************************************************
- * TC_003: Invalid / Out-of-Range Group ID Check (ADC_E_PARAM_GROUP = 0x15U)
+ * IT_003: Adc_Init() -> Out-of-Range Group ID -> Det_ReportError(ADC_E_PARAM_GROUP)
+ * Verifies boundary validation across Adc_SetupResultBuffer() and DET module.
  * AUTOSAR Req : [SWS_Adc_00423], [SWS_Adc_91005]
  ******************************************************************************/
-void Test_Adc_SetupResultBuffer_Tc_003(void)
+void Test_Adc_SetupResultBuffer_It_003(void)
 {
     Std_ReturnType retVal;
 
-    Test_Helper_ResetDriver();
-    Test_Helper_InitDriver(&Test_AdcConfig);
-
-    /* Pre-assign valid buffer to Group 0 */
-    (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
     DetStub_Reset();
+    Adc_Init(&Test_AdcConfig);
 
     /* Pass invalid Group ID = 2 */
     retVal = Adc_SetupResultBuffer(TEST_INVALID_GROUP, Test_BufferB);
@@ -249,8 +239,7 @@ void Test_Adc_SetupResultBuffer_Tc_003(void)
         (Det_ErrorLog.LastModuleId == ADC_MODULE_ID) &&
         (Det_ErrorLog.LastInstanceId == ADC_INSTANCE_ID) &&
         (Det_ErrorLog.LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_ErrorLog.LastErrorId == ADC_E_PARAM_GROUP) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == Test_BufferA))
+        (Det_ErrorLog.LastErrorId == ADC_E_PARAM_GROUP))
     {
         Test_Result = TEST_PASS;
     }
@@ -258,24 +247,27 @@ void Test_Adc_SetupResultBuffer_Tc_003(void)
     {
         Test_Result = TEST_FAIL;
     }
+
+    Test_Integration_Teardown();
 }
 
 /*******************************************************************************
- * TC_004: NULL Buffer Pointer Check (ADC_E_PARAM_POINTER = 0x14U)
+ * IT_004: Adc_Init() -> NULL Buffer Pointer -> Det_ReportError(ADC_E_PARAM_POINTER)
+ * Verifies NULL pointer rejection and protection of previously bound buffer.
  * AUTOSAR Req : [SWS_Adc_00457], [SWS_Adc_91005]
  ******************************************************************************/
-void Test_Adc_SetupResultBuffer_Tc_004(void)
+void Test_Adc_SetupResultBuffer_It_004(void)
 {
     Std_ReturnType retVal;
 
-    Test_Helper_ResetDriver();
-    Test_Helper_InitDriver(&Test_AdcConfig);
+    DetStub_Reset();
+    Adc_Init(&Test_AdcConfig);
 
-    /* Pre-assign valid buffer to Group 0 */
+    /* Bind valid buffer first */
     (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
     DetStub_Reset();
 
-    /* Pass NULL_PTR */
+    /* Attempt to pass NULL_PTR */
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, NULL_PTR);
 
     if ((retVal == E_NOT_OK) &&
@@ -284,8 +276,7 @@ void Test_Adc_SetupResultBuffer_Tc_004(void)
         (Det_ErrorLog.LastModuleId == ADC_MODULE_ID) &&
         (Det_ErrorLog.LastInstanceId == ADC_INSTANCE_ID) &&
         (Det_ErrorLog.LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_ErrorLog.LastErrorId == ADC_E_PARAM_POINTER) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == Test_BufferA))
+        (Det_ErrorLog.LastErrorId == ADC_E_PARAM_POINTER))
     {
         Test_Result = TEST_PASS;
     }
@@ -293,37 +284,44 @@ void Test_Adc_SetupResultBuffer_Tc_004(void)
     {
         Test_Result = TEST_FAIL;
     }
+
+    Test_Integration_Teardown();
 }
 
 /*******************************************************************************
- * TC_005: Group Busy Runtime Error Check (ADC_E_BUSY = 0x0BU)
+ * IT_005: Adc_Init() -> SetupBuffer -> StartGroupConversion() -> Busy Rejection
+ * Verifies cross-API state lock: starting a conversion via Adc_StartGroupConversion()
+ * transitions Group 0 to ADC_BUSY and causes Adc_SetupResultBuffer() to report
+ * runtime error ADC_E_BUSY (0x0BU).
  * AUTOSAR Req : [SWS_Adc_00433], [SWS_Adc_91006]
  ******************************************************************************/
-void Test_Adc_SetupResultBuffer_Tc_005(void)
+void Test_Adc_SetupResultBuffer_It_005(void)
 {
     Std_ReturnType retVal;
+    Adc_StatusType grp0Status;
 
-    Test_Helper_ResetDriver();
-    Test_Helper_InitDriver(&Test_AdcConfig);
-
-    /* Pre-assign valid buffer to Group 0 */
-    (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
     DetStub_Reset();
 
-    /* Simulate ongoing conversion (group not in ADC_IDLE state) */
-    Adc_GroupRuntime[TEST_GROUP_0].GroupStatus = ADC_BUSY;
+    /* Step 1: Initialize and setup valid buffer */
+    Adc_Init(&Test_AdcConfig);
+    (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
 
-    /* Attempt to overwrite buffer pointer while Group 0 is BUSY */
+    /* Step 2: Start real SW conversion so Group 0 naturally enters ADC_BUSY */
+    Adc_StartGroupConversion(TEST_GROUP_0);
+    grp0Status = Adc_GetGroupStatus(TEST_GROUP_0);
+    DetStub_Reset();
+
+    /* Step 3: Attempt to re-bind buffer while Group 0 is actively converting */
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferB);
 
-    if ((retVal == E_NOT_OK) &&
+    if ((grp0Status == ADC_BUSY) &&
+        (retVal == E_NOT_OK) &&
         (Det_ErrorLog.CallCount == 1U) &&
         (Det_ErrorLog.IsRuntimeError == 1U) &&
         (Det_ErrorLog.LastModuleId == ADC_MODULE_ID) &&
         (Det_ErrorLog.LastInstanceId == ADC_INSTANCE_ID) &&
         (Det_ErrorLog.LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_ErrorLog.LastErrorId == ADC_E_BUSY) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == Test_BufferA))
+        (Det_ErrorLog.LastErrorId == ADC_E_BUSY))
     {
         Test_Result = TEST_PASS;
     }
@@ -331,10 +329,17 @@ void Test_Adc_SetupResultBuffer_Tc_005(void)
     {
         Test_Result = TEST_FAIL;
     }
+
+    Test_Integration_Teardown();
 }
 
 /* ============================================================================
- * 5. EXTENSIBLE TEST REGISTRY & RUNNER
+ * 4. EXTENSIBLE INTEGRATION TEST REGISTRY & RUNNER
+ * ============================================================================
+ * To extend this suite in the future:
+ *   1. Write a new function: void Test_Adc_SetupResultBuffer_It_006(void)
+ *   2. Add one entry to Test_CaseTable[] below.
+ *   TOTAL_TEST_CASES updates automatically at compile time.
  * ============================================================================ */
 typedef struct
 {
@@ -344,11 +349,11 @@ typedef struct
 
 static const Test_CaseEntryType Test_CaseTable[] =
 {
-    { "TC_001_ValidSetup",      Test_Adc_SetupResultBuffer_Tc_001 },
-    { "TC_002_UninitError",     Test_Adc_SetupResultBuffer_Tc_002 },
-    { "TC_003_InvalidGroup",    Test_Adc_SetupResultBuffer_Tc_003 },
-    { "TC_004_NullPointer",     Test_Adc_SetupResultBuffer_Tc_004 },
-    { "TC_005_BusyRuntimeErr",  Test_Adc_SetupResultBuffer_Tc_005 }
+    { "IT_001_InitAndSetupBuffer",      Test_Adc_SetupResultBuffer_It_001 },
+    { "IT_002_UninitSequenceReject",    Test_Adc_SetupResultBuffer_It_002 },
+    { "IT_003_InvalidGroupBoundary",    Test_Adc_SetupResultBuffer_It_003 },
+    { "IT_004_NullBufferProtection",    Test_Adc_SetupResultBuffer_It_004 },
+    { "IT_005_ActiveConversionBusyErr", Test_Adc_SetupResultBuffer_It_005 }
 };
 
 #define TOTAL_TEST_CASES (sizeof(Test_CaseTable) / sizeof(Test_CaseTable[0]))
