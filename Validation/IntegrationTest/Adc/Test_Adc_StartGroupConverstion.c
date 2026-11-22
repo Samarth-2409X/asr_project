@@ -18,23 +18,8 @@ static uint8              Test_Result = TEST_FAIL;
 static Adc_ValueGroupType Test_Buffer[TEST_BUFFER_LEN] = { 0x1111U, 0x2222U, 0x3333U, 0x4444U };
 
 /* ============================================================================
- * 2. TEST ENVIRONMENT RESET & RESULT HELPERS
+ * 2. TEST RESULT GETTER
  * ============================================================================ */
-static void Test_Det_Reset(void)
-{
-    Det_LastModuleId          = 0U;
-    Det_LastInstanceId        = 0U;
-    Det_LastApiId             = 0U;
-    Det_LastErrorId           = 0U;
-    Det_ErrorCount            = 0U;
-
-    Det_LastRuntimeModuleId   = 0U;
-    Det_LastRuntimeInstanceId = 0U;
-    Det_LastRuntimeApiId      = 0U;
-    Det_LastRuntimeErrorId    = 0U;
-    Det_RuntimeErrorCount     = 0U;
-}
-
 uint8 Test_Adc_StartGroupConversion_GetResult(void)
 {
     return Test_Result;
@@ -50,15 +35,15 @@ uint8 Test_Adc_StartGroupConversion_GetResult(void)
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_002(void)
 {
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     Adc_StartGroupConversion(TEST_GROUP_0);
 
-    if ((Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
-        (Det_LastErrorId == ADC_E_UNINIT))
+    if ((Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_UNINIT))
     {
         Test_Result = TEST_PASS;
     }
@@ -73,16 +58,16 @@ void Test_Adc_StartGroupConversion_It_002(void)
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_003(void)
 {
-    Test_Det_Reset();
+    Det_ResetLogs();
     Adc_Init(&adcConfig);
 
     Adc_StartGroupConversion(TEST_INVALID_GROUP);
 
-    if ((Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
-        (Det_LastErrorId == ADC_E_PARAM_GROUP))
+    if ((Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_PARAM_GROUP))
     {
         Test_Result = TEST_PASS;
     }
@@ -97,16 +82,16 @@ void Test_Adc_StartGroupConversion_It_003(void)
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_004(void)
 {
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     /* ResultBufferPtr has not been set up yet (remains NULL_PTR) */
     Adc_StartGroupConversion(TEST_GROUP_0);
 
-    if ((Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
-        (Det_LastErrorId == ADC_E_BUFFER_UNINIT))
+    if ((Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_BUFFER_UNINIT))
     {
         Test_Result = TEST_PASS;
     }
@@ -121,14 +106,14 @@ void Test_Adc_StartGroupConversion_It_004(void)
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_001(void)
 {
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_Buffer);
 
     Adc_StartGroupConversion(TEST_GROUP_0);
 
-    if ((Det_ErrorCount == 0U) &&
-        (Det_RuntimeErrorCount == 0U))
+    if ((Det_DevErrorLog.ErrorCount == 0UL) &&
+        (Det_RuntimeErrorLog.ErrorCount == 0UL))
     {
         Test_Result = TEST_PASS;
     }
@@ -144,16 +129,16 @@ void Test_Adc_StartGroupConversion_It_001(void)
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_006(void)
 {
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     /* Calling Adc_StartGroupConversion while Group 0 is already ADC_BUSY */
     Adc_StartGroupConversion(TEST_GROUP_0);
 
-    if ((Det_RuntimeErrorCount == 1U) &&
-        (Det_LastRuntimeModuleId == ADC_MODULE_ID) &&
-        (Det_LastRuntimeInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastRuntimeApiId == ADC_SID_START_GROUP_CONVERSION) &&
-        (Det_LastRuntimeErrorId == ADC_E_BUSY))
+    if ((Det_RuntimeErrorLog.ErrorCount == 1UL) &&
+        (Det_RuntimeErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_RuntimeErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_RuntimeErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_RuntimeErrorLog.ErrorId == ADC_E_BUSY))
     {
         Test_Result = TEST_PASS;
     }
@@ -165,22 +150,20 @@ void Test_Adc_StartGroupConversion_It_006(void)
 
 /*******************************************************************************
  * IT_005: Wrong Trigger Source (HW Trigger Configured) ([SWS_Adc_00133])
- * Note: Requires Group configured with ADC_TRIGG_SRC_HW (e.g., adcConfig_HwTrigg
- *       after Adc_DeInit(), or Group 1 if configured as HW trigger in adcConfig).
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_005(void)
 {
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     (void)Adc_SetupResultBuffer(TEST_GROUP_1, Test_Buffer);
 
     Adc_StartGroupConversion(TEST_GROUP_1);
 
-    if ((Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
-        (Det_LastErrorId == ADC_E_WRONG_TRIGG_SRC))
+    if ((Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_WRONG_TRIGG_SRC))
     {
         Test_Result = TEST_PASS;
     }

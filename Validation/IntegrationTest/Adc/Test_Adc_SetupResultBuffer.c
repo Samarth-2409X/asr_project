@@ -19,23 +19,8 @@ static Adc_ValueGroupType Test_BufferA[TEST_BUFFER_LEN] = { 0x1111U, 0x2222U, 0x
 static Adc_ValueGroupType Test_BufferB[TEST_BUFFER_LEN] = { 0x5555U, 0x6666U, 0x7777U, 0x8888U };
 
 /* ============================================================================
- * 2. TEST ENVIRONMENT RESET & RESULT HELPERS
+ * 2. TEST RESULT GETTER
  * ============================================================================ */
-static void Test_Det_Reset(void)
-{
-    Det_LastModuleId          = 0U;
-    Det_LastInstanceId        = 0U;
-    Det_LastApiId             = 0U;
-    Det_LastErrorId           = 0U;
-    Det_ErrorCount            = 0U;
-
-    Det_LastRuntimeModuleId   = 0U;
-    Det_LastRuntimeInstanceId = 0U;
-    Det_LastRuntimeApiId      = 0U;
-    Det_LastRuntimeErrorId    = 0U;
-    Det_RuntimeErrorCount     = 0U;
-}
-
 uint8 Test_Adc_SetupResultBuffer_GetResult(void)
 {
     return Test_Result;
@@ -53,16 +38,16 @@ void Test_Adc_SetupResultBuffer_It_002(void)
 {
     Std_ReturnType retVal;
 
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
 
     if ((retVal == E_NOT_OK) &&
-        (Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_LastErrorId == ADC_E_UNINIT))
+        (Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_UNINIT))
     {
         Test_Result = TEST_PASS;
     }
@@ -79,14 +64,14 @@ void Test_Adc_SetupResultBuffer_It_001(void)
 {
     Std_ReturnType retVal;
 
-    Test_Det_Reset();
+    Det_ResetLogs();
     Adc_Init(&adcConfig);
 
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
 
     if ((retVal == E_OK) &&
-        (Det_ErrorCount == 0U) &&
-        (Det_RuntimeErrorCount == 0U))
+        (Det_DevErrorLog.ErrorCount == 0UL) &&
+        (Det_RuntimeErrorLog.ErrorCount == 0UL))
     {
         Test_Result = TEST_PASS;
     }
@@ -103,16 +88,16 @@ void Test_Adc_SetupResultBuffer_It_003(void)
 {
     Std_ReturnType retVal;
 
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     retVal = Adc_SetupResultBuffer(TEST_INVALID_GROUP, Test_BufferB);
 
     if ((retVal == E_NOT_OK) &&
-        (Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_LastErrorId == ADC_E_PARAM_GROUP))
+        (Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_PARAM_GROUP))
     {
         Test_Result = TEST_PASS;
     }
@@ -129,16 +114,16 @@ void Test_Adc_SetupResultBuffer_It_004(void)
 {
     Std_ReturnType retVal;
 
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, NULL_PTR);
 
     if ((retVal == E_NOT_OK) &&
-        (Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_LastErrorId == ADC_E_PARAM_POINTER))
+        (Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_PARAM_POINTER))
     {
         Test_Result = TEST_PASS;
     }
@@ -158,17 +143,17 @@ void Test_Adc_SetupResultBuffer_It_005(void)
     /* Bind valid buffer and start conversion to place Group 0 into ADC_BUSY state */
     (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
     Adc_StartGroupConversion(TEST_GROUP_0);
-    Test_Det_Reset();
+    Det_ResetLogs();
 
     /* Calling Adc_SetupResultBuffer while Group 0 is ADC_BUSY must report ADC_E_BUSY */
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferB);
 
     if ((retVal == E_NOT_OK) &&
-        (Det_RuntimeErrorCount == 1U) &&
-        (Det_LastRuntimeModuleId == ADC_MODULE_ID) &&
-        (Det_LastRuntimeInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastRuntimeApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_LastRuntimeErrorId == ADC_E_BUSY))
+        (Det_RuntimeErrorLog.ErrorCount == 1UL) &&
+        (Det_RuntimeErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_RuntimeErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_RuntimeErrorLog.ApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
+        (Det_RuntimeErrorLog.ErrorId == ADC_E_BUSY))
     {
         Test_Result = TEST_PASS;
     }
