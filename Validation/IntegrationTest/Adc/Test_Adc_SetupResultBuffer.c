@@ -1,24 +1,3 @@
-/*******************************************************************************
- * File     : Test_Adc_SetupResultBuffer.c
- * Layer    : Validation / IntegrationTest / Adc
- * Module   : ADC Driver (AUTOSAR CP R25-11, Infineon AURIX TC39x EVADC CPU0)
- * Function : Adc_SetupResultBuffer() - Service ID: 0x0CU [SWS_Adc_91000]
- * Author   : Samarth Shirahatti (Validation Team)
- *
- * Description:
- *   Integration test suite covering ONLY the 5 requirements implemented in
- *   Adc_SetupResultBuffer.c:
- *     - IT_001: Valid buffer setup ([SWS_Adc_00420], [SWS_Adc_91000])
- *     - IT_002: Driver uninitialized check ([SWS_Adc_00434]) -> ADC_E_UNINIT
- *     - IT_003: Invalid group ID check ([SWS_Adc_00423]) -> ADC_E_PARAM_GROUP
- *     - IT_004: NULL buffer pointer check ([SWS_Adc_00457]) -> ADC_E_PARAM_POINTER
- *     - IT_005: Busy group runtime check ([SWS_Adc_00433]) -> ADC_E_BUSY
- *
- * Result Convention (Test_Result):
- *     1U -> PASS (TEST_PASS)
- *     0U -> FAIL (TEST_FAIL)
- ******************************************************************************/
-
 #include "Std_Types.h"
 #include "Adc.h"
 #include "Adc_Cfg.h"
