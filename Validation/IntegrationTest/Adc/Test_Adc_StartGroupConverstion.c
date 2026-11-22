@@ -1,247 +1,280 @@
-#include <stdio.h>
+#include "Std_Types.h"
 #include "Adc.h"
+#include "Adc_Cfg.h"
+#include "Adc_PBcfg.h"
 #include "Det.h"
 
-/*
- * Include implementation directly for unit testing.
- * This gives the test access to static driver variables.
- */
-#include "Adc_StartGroupConversion.c"
+/* Include driver implementation directly to access module static runtime state */
+#include "../../../Development/Mcal/Adc/Adc_StartGroupConversion.c"
 
-/* DET mock variables */
+/* ============================================================================
+ * 1. TEST CONSTANTS & APPLICATION DATA BUFFERS
+ * ============================================================================ */
+#define TEST_PASS               (1U)
+#define TEST_FAIL               (0U)
+#define TEST_GROUP_0            (0U)
+#define TEST_GROUP_1            (1U)
+#define TEST_INVALID_GROUP      (ADC_MAX_GROUPS_PER_HW_UNIT) /* 2U -> Out of bounds */
+#define TEST_BUFFER_LEN         (4U)
 
-uint8 Det_ErrorId = 0xFFU;
-uint8 Det_RuntimeErrorId = 0xFFU;
+static uint8              Test_Result = TEST_FAIL;
+static Adc_ValueGroupType Test_Buffer[TEST_BUFFER_LEN] = { 0x1111U, 0x2222U, 0x3333U, 0x4444U };
 
-uint8 Det_ErrorCount = 0U;
-uint8 Det_RuntimeErrorCount = 0U;
-
-uint16 Det_ModuleId;
-uint8 Det_InstanceId;
-uint8 Det_ApiId;
-
-/* DET mock functions */
-
-Std_ReturnType Det_ReportError(
-    uint16 ModuleId,
-    uint8 InstanceId,
-    uint8 ApiId,
-    uint8 ErrorId)
+/* ============================================================================
+ * 2. TEST ENVIRONMENT RESET & INITIALIZATION HELPERS
+ * ============================================================================ */
+static void Test_Det_Reset(void)
 {
-    Det_ModuleId = ModuleId;
-    Det_InstanceId = InstanceId;
-    Det_ApiId = ApiId;
-    Det_ErrorId = ErrorId;
+    Det_LastModuleId          = 0U;
+    Det_LastInstanceId        = 0U;
+    Det_LastApiId             = 0U;
+    Det_LastErrorId           = 0U;
+    Det_ErrorCount            = 0U;
 
-    Det_ErrorCount++;
-
-    return E_OK;
+    Det_LastRuntimeModuleId   = 0U;
+    Det_LastRuntimeInstanceId = 0U;
+    Det_LastRuntimeApiId      = 0U;
+    Det_LastRuntimeErrorId    = 0U;
+    Det_RuntimeErrorCount     = 0U;
 }
 
-Std_ReturnType Det_ReportRuntimeError(
-    uint16 ModuleId,
-    uint8 InstanceId,
-    uint8 ApiId,
-    uint8 ErrorId)
+static void Test_Env_Reset(void)
 {
-    Det_ModuleId = ModuleId;
-    Det_InstanceId = InstanceId;
-    Det_ApiId = ApiId;
-    Det_RuntimeErrorId = ErrorId;
+    Adc_GroupType grpIdx;
 
-    Det_RuntimeErrorCount++;
+    Adc_DriverState = ADC_STATE_UNINIT;
+    Adc_ConfigPtr   = NULL_PTR;
 
-    return E_OK;
-}
-
-/* ADC configuration and result buffer */
-
-Adc_ConfigType adcConfig;
-Adc_ValueGroupType ResultBuffer[2];
-
-/* Reset driver state before every test */
-
-void Reset_Test(void)
-{
-    Adc_GroupType i;
-
-    adcConfig.AdcHwUnit.AdcGroup[0].AdcGroupTriggSrc =
-        ADC_TRIGG_SRC_SW;
-
-    adcConfig.AdcHwUnit.AdcGroup[1].AdcGroupTriggSrc =
-        ADC_TRIGG_SRC_SW;
-
-    Adc_DriverState = ADC_STATE_INIT;
-    Adc_ConfigPtr = &adcConfig;
-
-    for (i = 0U; i < ADC_MAX_GROUPS_PER_HW_UNIT; i++)
+    for (grpIdx = 0U; grpIdx < ADC_MAX_GROUPS_PER_HW_UNIT; grpIdx++)
     {
-        Adc_GroupRuntime[i].GroupStatus = ADC_IDLE;
-
-        Adc_GroupRuntime[i].ResultBufferPtr = NULL_PTR;
-
-        Adc_GroupRuntime[i].NotificationEnabled = FALSE;
+        Adc_GroupRuntime[grpIdx].GroupStatus         = ADC_IDLE;
+        Adc_GroupRuntime[grpIdx].ResultBufferPtr     = NULL_PTR;
+        Adc_GroupRuntime[grpIdx].NotificationEnabled = FALSE;
     }
 
-    Det_ErrorId = 0xFFU;
-    Det_RuntimeErrorId = 0xFFU;
-
-    Det_ErrorCount = 0U;
-    Det_RuntimeErrorCount = 0U;
+    Test_Det_Reset();
 }
 
-/* -----------------------------------------
-   TEST CASE 1:
-   Valid group and initialized result buffer
-   ----------------------------------------- */
-
-void Test_01_Valid_Group(void)
+static void Test_Env_InitFromPBcfg(const Adc_ConfigType* ConfigPtr)
 {
-    Reset_Test();
+    Adc_GroupType grpIdx;
 
-    Adc_GroupRuntime[0U].ResultBufferPtr = ResultBuffer;
-
-    Adc_StartGroupConversion(0U);
-
-    if ((Adc_GroupRuntime[0U].GroupStatus == ADC_BUSY) &&
-        (Det_ErrorCount == 0U) &&
-        (Det_RuntimeErrorCount == 0U))
+    if (ConfigPtr != NULL_PTR)
     {
-        printf("TC01: PASS - Valid ADC conversion started\n");
+        Adc_ConfigPtr = ConfigPtr;
+        for (grpIdx = 0U; grpIdx < ADC_MAX_GROUPS_PER_HW_UNIT; grpIdx++)
+        {
+            Adc_GroupRuntime[grpIdx].GroupStatus         = ADC_IDLE;
+            Adc_GroupRuntime[grpIdx].ResultBufferPtr     = NULL_PTR;
+            Adc_GroupRuntime[grpIdx].NotificationEnabled = FALSE;
+        }
+        Adc_DriverState = ADC_STATE_INIT;
+    }
+}
+
+uint8 Test_Adc_StartGroupConversion_GetResult(void)
+{
+    return Test_Result;
+}
+
+/* ============================================================================
+ * 3. INTEGRATION TEST CASES (Strictly Matching Adc_StartGroupConversion.c)
+ * ============================================================================ */
+
+/*******************************************************************************
+ * IT_001: Valid Software Conversion Start ([SWS_Adc_00061], [SWS_Adc_00367])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_001(void)
+{
+    Test_Env_Reset();
+    Test_Env_InitFromPBcfg(&adcConfig);
+
+    Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr = Test_Buffer;
+
+    Adc_StartGroupConversion(TEST_GROUP_0);
+
+    if ((Det_ErrorCount == 0U) &&
+        (Det_RuntimeErrorCount == 0U) &&
+        (Adc_GroupRuntime[TEST_GROUP_0].GroupStatus == ADC_BUSY) &&
+        (Adc_GroupRuntime[TEST_GROUP_1].GroupStatus == ADC_IDLE))
+    {
+        Test_Result = TEST_PASS;
     }
     else
     {
-        printf("TC01: FAIL - Valid conversion test failed\n");
+        Test_Result = TEST_FAIL;
     }
 }
 
-/* -----------------------------------------
-   TEST CASE 2:
-   Invalid ADC group number
-   ----------------------------------------- */
-
-void Test_02_Invalid_Group(void)
+/*******************************************************************************
+ * IT_002: API Called While Driver Uninitialized ([SWS_Adc_00294], [SWS_Adc_91005])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_002(void)
 {
-    Reset_Test();
+    Test_Env_Reset(); /* Driver remains ADC_STATE_UNINIT */
 
-    Adc_StartGroupConversion(2U);
+    Adc_StartGroupConversion(TEST_GROUP_0);
 
-    if ((Det_ErrorId == ADC_E_PARAM_GROUP) &&
-        (Det_ErrorCount == 1U) &&
-        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
+    if ((Det_ErrorCount == 1U) &&
+        (Det_LastModuleId == ADC_MODULE_ID) &&
+        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
+        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_LastErrorId == ADC_E_UNINIT) &&
+        (Adc_GroupRuntime[TEST_GROUP_0].GroupStatus == ADC_IDLE))
     {
-        printf("TC02: PASS - Invalid group detected\n");
+        Test_Result = TEST_PASS;
     }
     else
     {
-        printf("TC02: FAIL - Invalid group not detected\n");
+        Test_Result = TEST_FAIL;
     }
 }
 
-/* -----------------------------------------
-   TEST CASE 3:
-   Uninitialized result buffer
-   ----------------------------------------- */
-
-void Test_03_Buffer_Uninitialized(void)
+/*******************************************************************************
+ * IT_003: Invalid / Out-of-Range Group ID ([SWS_Adc_00125], [SWS_Adc_91005])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_003(void)
 {
-    Reset_Test();
+    Test_Env_Reset();
+    Test_Env_InitFromPBcfg(&adcConfig);
 
-    Adc_GroupRuntime[0U].ResultBufferPtr = NULL_PTR;
+    Adc_StartGroupConversion(TEST_INVALID_GROUP);
 
-    Adc_StartGroupConversion(0U);
-
-    if ((Det_ErrorId == ADC_E_BUFFER_UNINIT) &&
-        (Det_ErrorCount == 1U) &&
-        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
+    if ((Det_ErrorCount == 1U) &&
+        (Det_LastModuleId == ADC_MODULE_ID) &&
+        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
+        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_LastErrorId == ADC_E_PARAM_GROUP))
     {
-        printf("TC03: PASS - Uninitialized buffer detected\n");
+        Test_Result = TEST_PASS;
     }
     else
     {
-        printf("TC03: FAIL - Buffer error not detected\n");
+        Test_Result = TEST_FAIL;
     }
 }
 
-/* -----------------------------------------
-   TEST CASE 4:
-   Hardware trigger instead of software trigger
-   ----------------------------------------- */
-
-void Test_04_Wrong_Trigger_Source(void)
+/*******************************************************************************
+ * IT_004: Result Buffer Not Initialized ([SWS_Adc_00424], [SWS_Adc_91005])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_004(void)
 {
-    Reset_Test();
+    Test_Env_Reset();
+    Test_Env_InitFromPBcfg(&adcConfig);
 
-    adcConfig.AdcHwUnit.AdcGroup[0U].AdcGroupTriggSrc =
-        ADC_TRIGG_SRC_HW;
+    /* ResultBufferPtr intentionally left NULL_PTR */
+    Adc_StartGroupConversion(TEST_GROUP_0);
 
-    Adc_GroupRuntime[0U].ResultBufferPtr = ResultBuffer;
-
-    Adc_StartGroupConversion(0U);
-
-    if ((Det_ErrorId == ADC_E_WRONG_TRIGG_SRC) &&
-        (Det_ErrorCount == 1U) &&
-        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
+    if ((Det_ErrorCount == 1U) &&
+        (Det_LastModuleId == ADC_MODULE_ID) &&
+        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
+        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_LastErrorId == ADC_E_BUFFER_UNINIT) &&
+        (Adc_GroupRuntime[TEST_GROUP_0].GroupStatus == ADC_IDLE))
     {
-        printf("TC04: PASS - Wrong trigger source detected\n");
+        Test_Result = TEST_PASS;
     }
     else
     {
-        printf("TC04: FAIL - Wrong trigger source not detected\n");
+        Test_Result = TEST_FAIL;
     }
 }
 
-/* -----------------------------------------
-   TEST CASE 5:
-   ADC group is already busy
-   ----------------------------------------- */
-
-void Test_05_Group_Already_Busy(void)
+/*******************************************************************************
+ * IT_005: Wrong Trigger Source (HW Trigger Configured) ([SWS_Adc_00133])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_005(void)
 {
-    Reset_Test();
+    Test_Env_Reset();
+    Test_Env_InitFromPBcfg(&adcConfig_HwTrigg);
 
-    Adc_GroupRuntime[0U].ResultBufferPtr = ResultBuffer;
+    Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr = Test_Buffer;
 
-    Adc_GroupRuntime[0U].GroupStatus = ADC_BUSY;
+    Adc_StartGroupConversion(TEST_GROUP_0);
 
-    Adc_StartGroupConversion(0U);
-
-    if ((Det_RuntimeErrorId == ADC_E_BUSY) &&
-        (Det_RuntimeErrorCount == 1U) &&
-        (Det_ApiId == ADC_SID_START_GROUP_CONVERSION))
+    if ((Det_ErrorCount == 1U) &&
+        (Det_LastModuleId == ADC_MODULE_ID) &&
+        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
+        (Det_LastApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_LastErrorId == ADC_E_WRONG_TRIGG_SRC) &&
+        (Adc_GroupRuntime[TEST_GROUP_0].GroupStatus == ADC_IDLE))
     {
-        printf("TC05: PASS - Busy ADC group detected\n");
+        Test_Result = TEST_PASS;
     }
     else
     {
-        printf("TC05: FAIL - Busy ADC group not detected\n");
+        Test_Result = TEST_FAIL;
     }
 }
 
-/* -----------------------------------------
-   MAIN FUNCTION
-   ----------------------------------------- */
-
-int main(void)
+/*******************************************************************************
+ * IT_006: Group Already Busy Runtime Error ([SWS_Adc_00346], [SWS_Adc_00426])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_006(void)
 {
-    printf("\n");
-    printf("========================================\n");
-    printf(" ADC START GROUP CONVERSION TESTING\n");
-    printf("========================================\n");
+    Test_Env_Reset();
+    Test_Env_InitFromPBcfg(&adcConfig);
 
-    Test_01_Valid_Group();
+    Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr = Test_Buffer;
 
-    Test_02_Invalid_Group();
+    /* First call starts conversion and transitions Group 0 to ADC_BUSY */
+    Adc_StartGroupConversion(TEST_GROUP_0);
+    Test_Det_Reset();
 
-    Test_03_Buffer_Uninitialized();
+    /* Second call while already ADC_BUSY must report runtime error ADC_E_BUSY */
+    Adc_StartGroupConversion(TEST_GROUP_0);
 
-    Test_04_Wrong_Trigger_Source();
+    if ((Det_RuntimeErrorCount == 1U) &&
+        (Det_LastRuntimeModuleId == ADC_MODULE_ID) &&
+        (Det_LastRuntimeInstanceId == ADC_INSTANCE_ID) &&
+        (Det_LastRuntimeApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_LastRuntimeErrorId == ADC_E_BUSY) &&
+        (Adc_GroupRuntime[TEST_GROUP_0].GroupStatus == ADC_BUSY))
+    {
+        Test_Result = TEST_PASS;
+    }
+    else
+    {
+        Test_Result = TEST_FAIL;
+    }
+}
 
-    Test_05_Group_Already_Busy();
+/* ============================================================================
+ * 4. EXTENSIBLE TEST TABLE & RUNNER
+ * ============================================================================ */
+typedef struct
+{
+    const char* TestName;
+    void (*TestFunc)(void);
+} Test_CaseEntryType;
 
-    printf("========================================\n");
-    printf(" ADC TESTING COMPLETED\n");
-    printf("========================================\n");
+static const Test_CaseEntryType Test_CaseTable[] =
+{
+    { "IT_001_ValidStartConversion", Test_Adc_StartGroupConversion_It_001 },
+    { "IT_002_UninitDriverError",    Test_Adc_StartGroupConversion_It_002 },
+    { "IT_003_InvalidGroupIdError",  Test_Adc_StartGroupConversion_It_003 },
+    { "IT_004_BufferUninitError",    Test_Adc_StartGroupConversion_It_004 },
+    { "IT_005_WrongTriggerSrcError", Test_Adc_StartGroupConversion_It_005 },
+    { "IT_006_GroupBusyRuntimeErr",  Test_Adc_StartGroupConversion_It_006 }
+};
 
-    return 0;
+#define TOTAL_TEST_CASES (sizeof(Test_CaseTable) / sizeof(Test_CaseTable[0]))
+
+uint32 Test_Adc_StartGroupConversion_RunAll(void)
+{
+    uint32 i;
+    uint32 passCount = 0U;
+
+    for (i = 0U; i < TOTAL_TEST_CASES; i++)
+    {
+        Test_Result = TEST_FAIL;
+        Test_CaseTable[i].TestFunc();
+
+        if (Test_Result == TEST_PASS)
+        {
+            passCount++;
+        }
+    }
+
+    return passCount;
 }
