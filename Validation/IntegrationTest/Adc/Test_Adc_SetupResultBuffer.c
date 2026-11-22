@@ -75,9 +75,6 @@ uint8 Test_Adc_SetupResultBuffer_GetResult(void)
     return Test_Result;
 }
 
-/* ============================================================================
- * 3. INTEGRATION TEST CASES (Strictly Matching Adc_SetupResultBuffer.c)
- * ============================================================================ */
 
 /*******************************************************************************
  * IT_001: Valid Result Buffer Setup ([SWS_Adc_00420], [SWS_Adc_91000])
@@ -203,7 +200,7 @@ void Test_Adc_SetupResultBuffer_It_005(void)
     (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
     Test_Det_Reset();
 
-    /* Simulate active conversion (GroupStatus != ADC_IDLE) */
+   
     Adc_GroupRuntime[TEST_GROUP_0].GroupStatus = ADC_BUSY;
 
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferB);

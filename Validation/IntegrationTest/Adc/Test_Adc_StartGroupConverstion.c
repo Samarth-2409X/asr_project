@@ -77,9 +77,6 @@ uint8 Test_Adc_StartGroupConversion_GetResult(void)
     return Test_Result;
 }
 
-/* ============================================================================
- * 3. INTEGRATION TEST CASES (Strictly Matching Adc_StartGroupConversion.c)
- * ============================================================================ */
 
 /*******************************************************************************
  * IT_001: Valid Software Conversion Start ([SWS_Adc_00061], [SWS_Adc_00367])
