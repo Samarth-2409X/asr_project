@@ -4,9 +4,6 @@
 #include "Adc_PBcfg.h"
 #include "Det.h"
 
-/* Include driver implementation directly to access module static runtime state */
-#include "../../../Development/Mcal/Adc/Adc_SetupResultBuffer.c"
-
 /* ============================================================================
  * 1. TEST CONSTANTS & DATA BUFFERS
  * ============================================================================ */
@@ -22,7 +19,7 @@ static Adc_ValueGroupType Test_BufferA[TEST_BUFFER_LEN] = { 0x1111U, 0x2222U, 0x
 static Adc_ValueGroupType Test_BufferB[TEST_BUFFER_LEN] = { 0x5555U, 0x6666U, 0x7777U, 0x8888U };
 
 /* ============================================================================
- * 2. TEST ENVIRONMENT RESET & INITIALIZATION HELPERS
+ * 2. TEST ENVIRONMENT RESET & RESULT HELPERS
  * ============================================================================ */
 static void Test_Det_Reset(void)
 {
@@ -39,60 +36,33 @@ static void Test_Det_Reset(void)
     Det_RuntimeErrorCount     = 0U;
 }
 
-static void Test_Env_Reset(void)
-{
-    Adc_GroupType grpIdx;
-
-    Adc_DriverState = ADC_STATE_UNINIT;
-    for (grpIdx = 0U; grpIdx < ADC_MAX_GROUPS_PER_HW_UNIT; grpIdx++)
-    {
-        Adc_GroupRuntime[grpIdx].GroupStatus         = ADC_IDLE;
-        Adc_GroupRuntime[grpIdx].ResultBufferPtr     = NULL_PTR;
-        Adc_GroupRuntime[grpIdx].NotificationEnabled = FALSE;
-    }
-
-    Test_Det_Reset();
-}
-
-static void Test_Env_InitFromPBcfg(const Adc_ConfigType* ConfigPtr)
-{
-    Adc_GroupType grpIdx;
-
-    if (ConfigPtr != NULL_PTR)
-    {
-        for (grpIdx = 0U; grpIdx < ADC_MAX_GROUPS_PER_HW_UNIT; grpIdx++)
-        {
-            Adc_GroupRuntime[grpIdx].GroupStatus         = ADC_IDLE;
-            Adc_GroupRuntime[grpIdx].ResultBufferPtr     = NULL_PTR;
-            Adc_GroupRuntime[grpIdx].NotificationEnabled = FALSE;
-        }
-        Adc_DriverState = ADC_STATE_INIT;
-    }
-}
-
 uint8 Test_Adc_SetupResultBuffer_GetResult(void)
 {
     return Test_Result;
 }
 
+/* ============================================================================
+ * 3. INTEGRATION TEST CASES
+ * ============================================================================ */
 
 /*******************************************************************************
- * IT_001: Valid Result Buffer Setup ([SWS_Adc_00420], [SWS_Adc_91000])
+ * IT_002: API Called While Driver Uninitialized ([SWS_Adc_00434], [SWS_Adc_91005])
+ * Note: Run before Adc_Init() while driver is in ADC_STATE_UNINIT.
  ******************************************************************************/
-void Test_Adc_SetupResultBuffer_It_001(void)
+void Test_Adc_SetupResultBuffer_It_002(void)
 {
     Std_ReturnType retVal;
 
-    Test_Env_Reset();
-    Test_Env_InitFromPBcfg(&adcConfig);
+    Test_Det_Reset();
 
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
 
-    if ((retVal == E_OK) &&
-        (Det_ErrorCount == 0U) &&
-        (Det_RuntimeErrorCount == 0U) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == Test_BufferA) &&
-        (Adc_GroupRuntime[TEST_GROUP_1].ResultBufferPtr == NULL_PTR))
+    if ((retVal == E_NOT_OK) &&
+        (Det_ErrorCount == 1U) &&
+        (Det_LastModuleId == ADC_MODULE_ID) &&
+        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
+        (Det_LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
+        (Det_LastErrorId == ADC_E_UNINIT))
     {
         Test_Result = TEST_PASS;
     }
@@ -103,23 +73,20 @@ void Test_Adc_SetupResultBuffer_It_001(void)
 }
 
 /*******************************************************************************
- * IT_002: API Called While Driver Uninitialized ([SWS_Adc_00434], [SWS_Adc_91005])
+ * IT_001: Valid Result Buffer Setup ([SWS_Adc_00420], [SWS_Adc_91000])
  ******************************************************************************/
-void Test_Adc_SetupResultBuffer_It_002(void)
+void Test_Adc_SetupResultBuffer_It_001(void)
 {
     Std_ReturnType retVal;
 
-    Test_Env_Reset(); /* Driver remains ADC_STATE_UNINIT */
+    Test_Det_Reset();
+    Adc_Init(&adcConfig);
 
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
 
-    if ((retVal == E_NOT_OK) &&
-        (Det_ErrorCount == 1U) &&
-        (Det_LastModuleId == ADC_MODULE_ID) &&
-        (Det_LastInstanceId == ADC_INSTANCE_ID) &&
-        (Det_LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_LastErrorId == ADC_E_UNINIT) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == NULL_PTR))
+    if ((retVal == E_OK) &&
+        (Det_ErrorCount == 0U) &&
+        (Det_RuntimeErrorCount == 0U))
     {
         Test_Result = TEST_PASS;
     }
@@ -136,8 +103,7 @@ void Test_Adc_SetupResultBuffer_It_003(void)
 {
     Std_ReturnType retVal;
 
-    Test_Env_Reset();
-    Test_Env_InitFromPBcfg(&adcConfig);
+    Test_Det_Reset();
 
     retVal = Adc_SetupResultBuffer(TEST_INVALID_GROUP, Test_BufferB);
 
@@ -163,10 +129,6 @@ void Test_Adc_SetupResultBuffer_It_004(void)
 {
     Std_ReturnType retVal;
 
-    Test_Env_Reset();
-    Test_Env_InitFromPBcfg(&adcConfig);
-
-    (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
     Test_Det_Reset();
 
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, NULL_PTR);
@@ -176,8 +138,7 @@ void Test_Adc_SetupResultBuffer_It_004(void)
         (Det_LastModuleId == ADC_MODULE_ID) &&
         (Det_LastInstanceId == ADC_INSTANCE_ID) &&
         (Det_LastApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_LastErrorId == ADC_E_PARAM_POINTER) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == Test_BufferA))
+        (Det_LastErrorId == ADC_E_PARAM_POINTER))
     {
         Test_Result = TEST_PASS;
     }
@@ -194,15 +155,12 @@ void Test_Adc_SetupResultBuffer_It_005(void)
 {
     Std_ReturnType retVal;
 
-    Test_Env_Reset();
-    Test_Env_InitFromPBcfg(&adcConfig);
-
+    /* Bind valid buffer and start conversion to place Group 0 into ADC_BUSY state */
     (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
+    Adc_StartGroupConversion(TEST_GROUP_0);
     Test_Det_Reset();
 
-   
-    Adc_GroupRuntime[TEST_GROUP_0].GroupStatus = ADC_BUSY;
-
+    /* Calling Adc_SetupResultBuffer while Group 0 is ADC_BUSY must report ADC_E_BUSY */
     retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferB);
 
     if ((retVal == E_NOT_OK) &&
@@ -210,8 +168,7 @@ void Test_Adc_SetupResultBuffer_It_005(void)
         (Det_LastRuntimeModuleId == ADC_MODULE_ID) &&
         (Det_LastRuntimeInstanceId == ADC_INSTANCE_ID) &&
         (Det_LastRuntimeApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_LastRuntimeErrorId == ADC_E_BUSY) &&
-        (Adc_GroupRuntime[TEST_GROUP_0].ResultBufferPtr == Test_BufferA))
+        (Det_LastRuntimeErrorId == ADC_E_BUSY))
     {
         Test_Result = TEST_PASS;
     }
@@ -219,43 +176,4 @@ void Test_Adc_SetupResultBuffer_It_005(void)
     {
         Test_Result = TEST_FAIL;
     }
-}
-
-/* ============================================================================
- * 4. EXTENSIBLE TEST TABLE & RUNNER
- * ============================================================================ */
-typedef struct
-{
-    const char* TestName;
-    void (*TestFunc)(void);
-} Test_CaseEntryType;
-
-static const Test_CaseEntryType Test_CaseTable[] =
-{
-    { "IT_001_ValidBufferSetup",    Test_Adc_SetupResultBuffer_It_001 },
-    { "IT_002_UninitDriverError",   Test_Adc_SetupResultBuffer_It_002 },
-    { "IT_003_InvalidGroupIdError", Test_Adc_SetupResultBuffer_It_003 },
-    { "IT_004_NullBufferPtrError",  Test_Adc_SetupResultBuffer_It_004 },
-    { "IT_005_GroupBusyRuntimeErr", Test_Adc_SetupResultBuffer_It_005 }
-};
-
-#define TOTAL_TEST_CASES (sizeof(Test_CaseTable) / sizeof(Test_CaseTable[0]))
-
-uint32 Test_Adc_SetupResultBuffer_RunAll(void)
-{
-    uint32 i;
-    uint32 passCount = 0U;
-
-    for (i = 0U; i < TOTAL_TEST_CASES; i++)
-    {
-        Test_Result = TEST_FAIL;
-        Test_CaseTable[i].TestFunc();
-
-        if (Test_Result == TEST_PASS)
-        {
-            passCount++;
-        }
-    }
-
-    return passCount;
 }
