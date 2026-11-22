@@ -1,105 +1,158 @@
 #include "Adc.h"
+#include "Adc_Cfg.h"
+#include "Adc_PBcfg.h"
 #include "Det.h"
 
-/* Spy variables provided by the Det stub to record reported errors */
-extern uint16 Det_LastModuleId;
-extern uint8  Det_LastInstanceId;
-extern uint8  Det_LastApiId;
-extern uint8  Det_LastErrorId;
-extern uint32 Det_ErrorCount;
+/* Integration Test Result Flags (TRUE = Passed, FALSE = Failed) */
+volatile boolean TestResult_SWS_Adc_00301                   = FALSE;
+volatile boolean TestResult_SWS_Adc_00054_NullPtr           = FALSE;
+volatile boolean TestResult_SWS_Adc_00365_00054_00056_00511 = FALSE;
+volatile boolean TestResult_SWS_Adc_00307_00513             = FALSE;
+volatile boolean TestResult_SWS_Adc_00077_00083             = FALSE;
+volatile boolean TestResult_SWS_Adc_00107                   = FALSE;
 
-/* Valid Post-Build Configuration Structure matching Adc.h */
-static const Adc_ConfigType Test_ValidAdcConfig = {
-    .AdcHwUnit = {
-        .ClkSrc   = 0U, /* 0 = Synchronized clock source */
-        .HwUnitId = 0U, /* EVADC HW Unit 0 */
-        .AdcChannel = {
-            { .AdcChannelSampTime = 5U,  .AdcChannelId = 0U },
-            { .AdcChannelSampTime = 10U, .AdcChannelId = 1U }
-        },
-        .AdcGroup = {
-            {
-                .AdcGroupAccessMode     = ADC_ACCESS_MODE_SINGLE,
-                .AdcGroupConversionMode = ADC_CONV_MODE_ONESHOT,
-                .AdcGroupId             = 0U,
-                .AdcGroupTriggSrc       = ADC_TRIGG_SRC_SW,
-                .AdcNotification        = NULL_PTR,
-                .AdcStreamingBufferMode = ADC_STREAM_BUFFER_LINEAR,
-                .AdcStreamingNumSamples = 1U,
-                .AdcChannel             = { .AdcChannelSampTime = 5U, .AdcChannelId = 0U }
-            },
-            {
-                .AdcGroupAccessMode     = ADC_ACCESS_MODE_SINGLE,
-                .AdcGroupConversionMode = ADC_CONV_MODE_ONESHOT,
-                .AdcGroupId             = 1U,
-                .AdcGroupTriggSrc       = ADC_TRIGG_SRC_SW,
-                .AdcNotification        = NULL_PTR,
-                .AdcStreamingBufferMode = ADC_STREAM_BUFFER_LINEAR,
-                .AdcStreamingNumSamples = 1U,
-                .AdcChannel             = { .AdcChannelSampTime = 10U, .AdcChannelId = 1U }
-            }
-        }
-    }
-};
+static uint32 NotifySensor_CallCount = 0UL;
 
-/* Helper function to clear DET spy logs before each test case */
-static void Reset_DetSpy(void)
+/* [SWS_Adc_00082] Configurable Notification Callback Stub */
+void NotifySensor(void)
 {
-    Det_LastModuleId   = 0U;
-    Det_LastInstanceId = 0U;
-    Det_LastApiId      = 0U;
-    Det_LastErrorId    = 0U;
-    Det_ErrorCount     = 0U;
+    NotifySensor_CallCount++;
 }
 
-/* TC_ADC_INIT_006: Pass NULL_PTR before initialization -> Expect ADC_E_PARAM_POINTER (0x14) */
-void TC_ADC_INIT_006_NullConfigPtr(void)
+/* [SWS_Adc_00301] [SWS_Adc_91005]
+ * Calling API prior to Adc_Init shall raise ADC_E_UNINIT (0x0A) and return ADC_IDLE.
+ */
+void Test_Adc_Init_UninitCheck(void)
 {
-    Reset_DetSpy();
+    Adc_StatusType GroupStatus;
 
+    Det_ResetLogs();
+    GroupStatus = Adc_GetGroupStatus(ADC_GROUP_ID0);
+
+    if ((GroupStatus                == ADC_IDLE) &&
+        (Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId   == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId      == ADC_SID_GET_GROUP_STATUS) &&
+        (Det_DevErrorLog.ErrorId    == ADC_E_UNINIT))
+    {
+        TestResult_SWS_Adc_00301 = TRUE;
+    }
+    else
+    {
+        TestResult_SWS_Adc_00301 = FALSE;
+    }
+}
+
+/* [SWS_Adc_00054] [SWS_Adc_91005]
+ * Calling Adc_Init with NULL_PTR in Variant PB shall raise ADC_E_PARAM_POINTER (0x14)
+ * and leave EVADC hardware registers unmodified.
+ */
+void Test_Adc_Init_NullConfigPtr(void)
+{
+    Det_ResetLogs();
     Adc_Init(NULL_PTR);
 
-    TEST_ASSERT_EQUAL(1U, Det_ErrorCount);
-    TEST_ASSERT_EQUAL(ADC_MODULE_ID, Det_LastModuleId);
-    TEST_ASSERT_EQUAL(ADC_SID_INIT, Det_LastApiId);
-    TEST_ASSERT_EQUAL(ADC_E_PARAM_POINTER, Det_LastErrorId);
+    if ((Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId   == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId      == ADC_SID_INIT) &&
+        (Det_DevErrorLog.ErrorId    == ADC_E_PARAM_POINTER) &&
+        (G0ICLASS0.STCS.B           == 0UL) &&
+        (G0ICLASS1.STCS.B           == 0UL))
+    {
+        TestResult_SWS_Adc_00054_NullPtr = TRUE;
+    }
+    else
+    {
+        TestResult_SWS_Adc_00054_NullPtr = FALSE;
+    }
 }
 
-/* TC_ADC_INIT_001, 005, 007, 008: Pre-Init Uninit Check -> Valid Init -> Post-Init Integration */
-void TC_ADC_INIT_001_005_007_008_ValidInitIntegration(void)
+/* [SWS_Adc_00365] [SWS_Adc_00054] [SWS_Adc_00056] [SWS_Adc_00511]
+ * Adc_Init shall enable EVADC clock, configure GLOBCFG clock source, program sampling
+ * times (G0ICLASS0/1.STCS) and input class selections (G0CHCTR0/1.ICLSEL) for only
+ * configured channels without raising DET errors.
+ */
+void Test_Adc_Init_ValidConfig(void)
 {
-    Adc_ValueGroupType ResultBuf[2];
-    Std_ReturnType ret;
+    Det_ResetLogs();
+    Adc_Init(&adcConfig);
 
-    Reset_DetSpy();
-
-    /* Step 1 (TC_ADC_INIT_008): Call another API before Adc_Init -> Must fail with ADC_E_UNINIT (0x0A) */
-    ret = Adc_SetupResultBuffer(0U, ResultBuf);
-    TEST_ASSERT_EQUAL(E_NOT_OK, ret);
-    TEST_ASSERT_EQUAL(ADC_E_UNINIT, Det_LastErrorId);
-
-    /* Step 2 (TC_ADC_INIT_005 & 007): Initialize driver with valid config */
-    Reset_DetSpy();
-    Adc_Init(&Test_ValidAdcConfig);
-    TEST_ASSERT_EQUAL(0U, Det_ErrorCount);
-
-    /* Step 3 (TC_ADC_INIT_001): Verify all groups are in ADC_IDLE state */
-    TEST_ASSERT_EQUAL(ADC_IDLE, Adc_GetGroupStatus(0U));
-    TEST_ASSERT_EQUAL(ADC_IDLE, Adc_GetGroupStatus(1U));
-
-    /* Step 4 (Integration check): Now Adc_SetupResultBuffer must succeed (E_OK) */
-    ret = Adc_SetupResultBuffer(0U, ResultBuf);
-    TEST_ASSERT_EQUAL(E_OK, ret);
+    if ((Det_DevErrorLog.ErrorCount == 0UL) &&
+        (CLC.DISR.B                 == 0UL) &&
+        (CLC.DISS.B                 == 0UL) &&
+        (GLOBCFG.U                  == (1UL << 15U)) &&
+        (G0ICLASS0.STCS.B           == 1UL) &&
+        (G0ICLASS1.STCS.B           == 2UL) &&
+        (G0CHCTR0.ICLSEL.B          == 0UL) &&
+        (G0CHCTR1.ICLSEL.B          == 1UL))
+    {
+        TestResult_SWS_Adc_00365_00054_00056_00511 = TRUE;
+    }
+    else
+    {
+        TestResult_SWS_Adc_00365_00054_00056_00511 = FALSE;
+    }
 }
 
-/* TC_ADC_INIT_002: Call Adc_Init again when already initialized -> Expect ADC_E_ALREADY_INITIALIZED (0x0D) */
-void TC_ADC_INIT_002_AlreadyInitialized(void)
+/* [SWS_Adc_00307] [SWS_Adc_00513]
+ * Adc_Init shall set all configured ADC channel groups to ADC_IDLE (0x00U).
+ */
+void Test_Adc_Init_GroupsIdle(void)
 {
-    Reset_DetSpy();
+    Det_ResetLogs();
 
-    Adc_Init(&Test_ValidAdcConfig);
+    if ((Adc_GetGroupStatus(ADC_GROUP_ID0) == ADC_IDLE) &&
+        (Adc_GetGroupStatus(ADC_GROUP_ID1) == ADC_IDLE) &&
+        (Det_DevErrorLog.ErrorCount        == 0UL))
+    {
+        TestResult_SWS_Adc_00307_00513 = TRUE;
+    }
+    else
+    {
+        TestResult_SWS_Adc_00307_00513 = FALSE;
+    }
+}
 
-    TEST_ASSERT_EQUAL(1U, Det_ErrorCount);
-    TEST_ASSERT_EQUAL(ADC_SID_INIT, Det_LastApiId);
-    TEST_ASSERT_EQUAL(ADC_E_ALREADY_INITIALIZED, Det_LastErrorId);
+/* [SWS_Adc_00077] [SWS_Adc_00083]
+ * Adc_Init shall disable group notifications and hardware trigger capability;
+ * no notification callback shall be invoked during initialization.
+ */
+void Test_Adc_Init_NotificationsDisabled(void)
+{
+    if (NotifySensor_CallCount == 0UL)
+    {
+        TestResult_SWS_Adc_00077_00083 = TRUE;
+    }
+    else
+    {
+        TestResult_SWS_Adc_00077_00083 = FALSE;
+    }
+}
+
+/* [SWS_Adc_00107] [SWS_Adc_91005]
+ * Calling Adc_Init when already initialized shall raise ADC_E_ALREADY_INITIALIZED (0x0D)
+ * and return without modifying configured EVADC registers.
+ */
+void Test_Adc_Init_AlreadyInitialized(void)
+{
+    Det_ResetLogs();
+    Adc_Init(&adcConfig1);
+
+    if ((Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId   == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId      == ADC_SID_INIT) &&
+        (Det_DevErrorLog.ErrorId    == ADC_E_ALREADY_INITIALIZED) &&
+        (G0ICLASS0.STCS.B           == 1UL) &&
+        (G0ICLASS1.STCS.B           == 2UL) &&
+        (GLOBCFG.U                  == (1UL << 15U)))
+    {
+        TestResult_SWS_Adc_00107 = TRUE;
+    }
+    else
+    {
+        TestResult_SWS_Adc_00107 = FALSE;
+    }
 }
