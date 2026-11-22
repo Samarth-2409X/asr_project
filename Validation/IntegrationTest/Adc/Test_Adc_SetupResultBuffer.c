@@ -27,35 +27,8 @@ uint8 Test_Adc_SetupResultBuffer_GetResult(void)
 }
 
 /* ============================================================================
- * 3. INTEGRATION TEST CASES
+ * 3. INTEGRATION TEST CASES (Sequential Order: IT_001 to IT_005)
  * ============================================================================ */
-
-/*******************************************************************************
- * IT_002: API Called While Driver Uninitialized ([SWS_Adc_00434], [SWS_Adc_91005])
- * Note: Run before Adc_Init() while driver is in ADC_STATE_UNINIT.
- ******************************************************************************/
-void Test_Adc_SetupResultBuffer_It_002(void)
-{
-    Std_ReturnType retVal;
-
-    Det_ResetLogs();
-
-    retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
-
-    if ((retVal == E_NOT_OK) &&
-        (Det_DevErrorLog.ErrorCount == 1UL) &&
-        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
-        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
-        (Det_DevErrorLog.ApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
-        (Det_DevErrorLog.ErrorId == ADC_E_UNINIT))
-    {
-        Test_Result = TEST_PASS;
-    }
-    else
-    {
-        Test_Result = TEST_FAIL;
-    }
-}
 
 /*******************************************************************************
  * IT_001: Valid Result Buffer Setup ([SWS_Adc_00420], [SWS_Adc_91000])
@@ -72,6 +45,33 @@ void Test_Adc_SetupResultBuffer_It_001(void)
     if ((retVal == E_OK) &&
         (Det_DevErrorLog.ErrorCount == 0UL) &&
         (Det_RuntimeErrorLog.ErrorCount == 0UL))
+    {
+        Test_Result = TEST_PASS;
+    }
+    else
+    {
+        Test_Result = TEST_FAIL;
+    }
+}
+
+/*******************************************************************************
+ * IT_002: API Called While Driver Uninitialized ([SWS_Adc_00434], [SWS_Adc_91005])
+ * Note: Call this test in main() BEFORE calling Adc_Init() (or after Adc_DeInit()).
+ ******************************************************************************/
+void Test_Adc_SetupResultBuffer_It_002(void)
+{
+    Std_ReturnType retVal;
+
+    Det_ResetLogs();
+
+    retVal = Adc_SetupResultBuffer(TEST_GROUP_0, Test_BufferA);
+
+    if ((retVal == E_NOT_OK) &&
+        (Det_DevErrorLog.ErrorCount == 1UL) &&
+        (Det_DevErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_DevErrorLog.ApiId == ADC_SID_SETUP_RESULT_BUFFER) &&
+        (Det_DevErrorLog.ErrorId == ADC_E_UNINIT))
     {
         Test_Result = TEST_PASS;
     }

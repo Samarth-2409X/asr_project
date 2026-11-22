@@ -26,12 +26,34 @@ uint8 Test_Adc_StartGroupConversion_GetResult(void)
 }
 
 /* ============================================================================
- * 3. INTEGRATION TEST CASES
+ * 3. INTEGRATION TEST CASES (Sequential Order: IT_001 to IT_006)
  * ============================================================================ */
 
 /*******************************************************************************
+ * IT_001: Valid Software Conversion Start ([SWS_Adc_00061], [SWS_Adc_00367])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_001(void)
+{
+    Det_ResetLogs();
+
+    (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_Buffer);
+
+    Adc_StartGroupConversion(TEST_GROUP_0);
+
+    if ((Det_DevErrorLog.ErrorCount == 0UL) &&
+        (Det_RuntimeErrorLog.ErrorCount == 0UL))
+    {
+        Test_Result = TEST_PASS;
+    }
+    else
+    {
+        Test_Result = TEST_FAIL;
+    }
+}
+
+/*******************************************************************************
  * IT_002: API Called While Driver Uninitialized ([SWS_Adc_00294], [SWS_Adc_91005])
- * Note: Run before Adc_Init() while driver is in ADC_STATE_UNINIT.
+ * Note: Call this test in main() BEFORE calling Adc_Init() (or after Adc_DeInit()).
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_002(void)
 {
@@ -59,7 +81,6 @@ void Test_Adc_StartGroupConversion_It_002(void)
 void Test_Adc_StartGroupConversion_It_003(void)
 {
     Det_ResetLogs();
-    Adc_Init(&adcConfig);
 
     Adc_StartGroupConversion(TEST_INVALID_GROUP);
 
@@ -79,12 +100,12 @@ void Test_Adc_StartGroupConversion_It_003(void)
 
 /*******************************************************************************
  * IT_004: Result Buffer Not Initialized ([SWS_Adc_00424], [SWS_Adc_91005])
+ * Note: Must be called on a group whose ResultBufferPtr is still NULL_PTR.
  ******************************************************************************/
 void Test_Adc_StartGroupConversion_It_004(void)
 {
     Det_ResetLogs();
 
-    /* ResultBufferPtr has not been set up yet (remains NULL_PTR) */
     Adc_StartGroupConversion(TEST_GROUP_0);
 
     if ((Det_DevErrorLog.ErrorCount == 1UL) &&
@@ -92,53 +113,6 @@ void Test_Adc_StartGroupConversion_It_004(void)
         (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
         (Det_DevErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
         (Det_DevErrorLog.ErrorId == ADC_E_BUFFER_UNINIT))
-    {
-        Test_Result = TEST_PASS;
-    }
-    else
-    {
-        Test_Result = TEST_FAIL;
-    }
-}
-
-/*******************************************************************************
- * IT_001: Valid Software Conversion Start ([SWS_Adc_00061], [SWS_Adc_00367])
- ******************************************************************************/
-void Test_Adc_StartGroupConversion_It_001(void)
-{
-    Det_ResetLogs();
-
-    (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_Buffer);
-
-    Adc_StartGroupConversion(TEST_GROUP_0);
-
-    if ((Det_DevErrorLog.ErrorCount == 0UL) &&
-        (Det_RuntimeErrorLog.ErrorCount == 0UL))
-    {
-        Test_Result = TEST_PASS;
-    }
-    else
-    {
-        Test_Result = TEST_FAIL;
-    }
-}
-
-/*******************************************************************************
- * IT_006: Group Already Busy Runtime Error ([SWS_Adc_00346], [SWS_Adc_00426])
- * Note: Group 0 is already ADC_BUSY from IT_001 (or after first start call).
- ******************************************************************************/
-void Test_Adc_StartGroupConversion_It_006(void)
-{
-    Det_ResetLogs();
-
-    /* Calling Adc_StartGroupConversion while Group 0 is already ADC_BUSY */
-    Adc_StartGroupConversion(TEST_GROUP_0);
-
-    if ((Det_RuntimeErrorLog.ErrorCount == 1UL) &&
-        (Det_RuntimeErrorLog.ModuleId == ADC_MODULE_ID) &&
-        (Det_RuntimeErrorLog.InstanceId == ADC_INSTANCE_ID) &&
-        (Det_RuntimeErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
-        (Det_RuntimeErrorLog.ErrorId == ADC_E_BUSY))
     {
         Test_Result = TEST_PASS;
     }
@@ -164,6 +138,33 @@ void Test_Adc_StartGroupConversion_It_005(void)
         (Det_DevErrorLog.InstanceId == ADC_INSTANCE_ID) &&
         (Det_DevErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
         (Det_DevErrorLog.ErrorId == ADC_E_WRONG_TRIGG_SRC))
+    {
+        Test_Result = TEST_PASS;
+    }
+    else
+    {
+        Test_Result = TEST_FAIL;
+    }
+}
+
+/*******************************************************************************
+ * IT_006: Group Already Busy Runtime Error ([SWS_Adc_00346], [SWS_Adc_00426])
+ ******************************************************************************/
+void Test_Adc_StartGroupConversion_It_006(void)
+{
+    /* Ensure Group 0 has a valid buffer and start conversion so it becomes ADC_BUSY */
+    (void)Adc_SetupResultBuffer(TEST_GROUP_0, Test_Buffer);
+    Adc_StartGroupConversion(TEST_GROUP_0);
+    Det_ResetLogs();
+
+    /* Second call while Group 0 is already ADC_BUSY must report ADC_E_BUSY */
+    Adc_StartGroupConversion(TEST_GROUP_0);
+
+    if ((Det_RuntimeErrorLog.ErrorCount == 1UL) &&
+        (Det_RuntimeErrorLog.ModuleId == ADC_MODULE_ID) &&
+        (Det_RuntimeErrorLog.InstanceId == ADC_INSTANCE_ID) &&
+        (Det_RuntimeErrorLog.ApiId == ADC_SID_START_GROUP_CONVERSION) &&
+        (Det_RuntimeErrorLog.ErrorId == ADC_E_BUSY))
     {
         Test_Result = TEST_PASS;
     }
