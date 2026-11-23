@@ -134,8 +134,11 @@ void Test_Adc_SetupResultBuffer_It_004(void)
 }
 
 /*******************************************************************************
- * IT_005: Group Busy Runtime Error ([SWS_Adc_00433], [SWS_Adc_91006])
+ * IT_005: starts a conversion on Group 0 using Adc_StartGroupConversion() 
+ * so the group enters ADC_BUSY,and then tries to re-configure its buffer ([SWS_Adc_00433]), 
+ * verifying that Det_RuntimeErrorLog captures ADC_E_BUSY
  ******************************************************************************/
+
 void Test_Adc_SetupResultBuffer_It_005(void)
 {
     Std_ReturnType retVal;

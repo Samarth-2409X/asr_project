@@ -138,7 +138,7 @@ void Test_Adc_Init_NotificationsDisabled(void)
 void Test_Adc_Init_AlreadyInitialized(void)
 {
     Det_ResetLogs();
-    Adc_Init(&adcConfig1);
+    Adc_Init(&adcConfig);
 
     if ((Det_DevErrorLog.ErrorCount == 1UL) &&
         (Det_DevErrorLog.ModuleId   == ADC_MODULE_ID) &&
